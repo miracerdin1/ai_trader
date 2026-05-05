@@ -5,6 +5,7 @@ Telegram Bot modülü
 """
 
 import os
+import asyncio
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.request import HTTPXRequest
 from telegram.constants import ParseMode

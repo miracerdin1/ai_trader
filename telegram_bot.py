@@ -26,10 +26,14 @@ async def _send_message_async(text: str, reply_markup: InlineKeyboardMarkup = No
         return False
 
     try:
-        # PythonAnywhere Proxy Ayarı
+        # PythonAnywhere Proxy Ayarı (Zaman aşımı eklendi)
         trequest = None
         if "PYTHONANYWHERE_DOMAIN" in os.environ:
-            trequest = HTTPXRequest(proxy="http://proxy.server:3128")
+            trequest = HTTPXRequest(
+                proxy="http://proxy.server:3128",
+                connect_timeout=20.0,
+                read_timeout=20.0
+            )
             
         bot = Bot(token=config.TELEGRAM_BOT_TOKEN, request=trequest)
         await bot.send_message(
@@ -46,7 +50,12 @@ async def _send_message_async(text: str, reply_markup: InlineKeyboardMarkup = No
 
         # Markdown parse hatası durumunda düz metin olarak dene
         try:
-            bot = Bot(token=config.TELEGRAM_BOT_TOKEN)
+            # Fallback kısmına da proxy ekliyoruz
+            trequest = None
+            if "PYTHONANYWHERE_DOMAIN" in os.environ:
+                trequest = HTTPXRequest(proxy="http://proxy.server:3128", connect_timeout=20.0)
+                
+            bot = Bot(token=config.TELEGRAM_BOT_TOKEN, request=trequest)
             await bot.send_message(
                 chat_id=config.TELEGRAM_CHAT_ID,
                 text=text,

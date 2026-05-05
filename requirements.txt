@@ -1,0 +1,29 @@
+# === AI Trader - Gerekli Kütüphaneler ===
+
+# TradingView Teknik Analiz
+tradingview-ta>=3.3.0
+
+# Kripto borsa verileri (public API, key gerekmez)
+ccxt>=4.4.0
+
+# Teknik analiz göstergeleri
+pandas_ta>=0.3.14b1
+
+# Veri işleme
+pandas>=2.1.0
+numpy>=1.24.0
+
+# HTTP istekleri
+requests>=2.31.0
+
+# Telegram bot
+python-telegram-bot>=21.0
+
+# Ortam değişkenleri
+python-dotenv>=1.0.0
+
+# Zamanlama
+schedule>=1.2.0
+
+# Loglama
+loguru>=0.7.0

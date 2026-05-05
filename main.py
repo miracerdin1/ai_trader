@@ -229,7 +229,11 @@ async def main():
     trequest = None
     if "PYTHONANYWHERE_DOMAIN" in os.environ:
         logger.info("🌐 PythonAnywhere algılandı, proxy aktifleştiriliyor...")
-        trequest = HTTPXRequest(proxy="http://proxy.server:3128")
+        trequest = HTTPXRequest(
+            proxy="http://proxy.server:3128",
+            connect_timeout=20.0,
+            read_timeout=20.0
+        )
 
     # Uygulamayı oluştur
     app = ApplicationBuilder().token(config.TELEGRAM_BOT_TOKEN).request(trequest).build()

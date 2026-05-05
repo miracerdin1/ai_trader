@@ -4,7 +4,8 @@ Veri çekme modülü
 - ccxt üzerinden halka açık mum (OHLCV) verileri
 """
 
-from tradingview_ta import TA_Handler, Interval, Exchange
+import os
+from tradingview_ta import TA_Handler, Interval
 import ccxt
 import pandas as pd
 from loguru import logger
@@ -23,13 +24,6 @@ TV_INTERVALS = {
 def get_tradingview_analysis(symbol: str = config.SYMBOL) -> dict:
     """
     TradingView-TA kullanarak birden fazla zaman diliminde teknik analiz çeker.
-
-    Returns:
-        {
-            "15m": {"RECOMMENDATION": "STRONG_BUY", "BUY": 15, "SELL": 3, ...},
-            "1h":  {...},
-            "4h":  {...},
-        }
     """
     results = {}
 
@@ -65,6 +59,17 @@ def get_tradingview_analysis(symbol: str = config.SYMBOL) -> dict:
     return results
 
 
+def get_exchange():
+    """PythonAnywhere uyumlu ccxt exchange nesnesi oluşturur."""
+    options = {"enableRateLimit": True}
+    if "PYTHONANYWHERE_DOMAIN" in os.environ:
+        options["proxies"] = {
+            "http": "http://proxy.server:3128",
+            "https": "http://proxy.server:3128",
+        }
+    return ccxt.binance(options)
+
+
 def get_ohlcv_data(
     symbol: str = config.CCXT_SYMBOL,
     timeframe: str = "1h",
@@ -73,12 +78,9 @@ def get_ohlcv_data(
     """
     ccxt üzerinden Binance'den halka açık OHLCV verisi çeker.
     API key gerektirmez.
-
-    Returns:
-        pandas DataFrame: [timestamp, open, high, low, close, volume]
     """
     try:
-        exchange = ccxt.binance({"enableRateLimit": True})
+        exchange = get_exchange()
         ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
 
         df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
@@ -98,7 +100,7 @@ def get_current_price(symbol: str = config.CCXT_SYMBOL) -> float | None:
     ccxt üzerinden anlık fiyat çeker (ticker).
     """
     try:
-        exchange = ccxt.binance({"enableRateLimit": True})
+        exchange = get_exchange()
         ticker = exchange.fetch_ticker(symbol)
         price = ticker["last"]
         logger.info(f"[ccxt] {symbol} anlık fiyat: ${price:,.2f}")

@@ -4,6 +4,7 @@ Duygu Analizi (Sentiment) modülü
 - CryptoPanic RSS haberleri ile piyasa duyarlılığı
 """
 
+import os
 import re
 import requests
 import xml.etree.ElementTree as ET
@@ -12,21 +13,28 @@ from loguru import logger
 import config
 
 
+def get_requests_options():
+    """PythonAnywhere uyumlu requests ayarları döner."""
+    options = {"timeout": 10}
+    if "PYTHONANYWHERE_DOMAIN" in os.environ:
+        options["proxies"] = {
+            "http": "http://proxy.server:3128",
+            "https": "http://proxy.server:3128",
+        }
+    # Bot engellemesini aşmak için User-Agent ekle
+    options["headers"] = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    }
+    return options
+
+
 def get_fear_greed_index() -> dict | None:
     """
     Alternative.me Fear & Greed Index API'sinden veri çeker.
-    API Key gerektirmez.
-
-    Returns:
-        {
-            "value": int (0-100),
-            "label": str ("Extreme Fear", "Fear", "Neutral", "Greed", "Extreme Greed"),
-            "sentiment_score": float (puan katkısı, 0-3 arası),
-            "description": str,
-        }
     """
     try:
-        response = requests.get(config.FEAR_GREED_API, timeout=10)
+        opts = get_requests_options()
+        response = requests.get(config.FEAR_GREED_API, **opts)
         response.raise_for_status()
         data = response.json()
 
@@ -38,8 +46,6 @@ def get_fear_greed_index() -> dict | None:
         value = int(entry["value"])
         label = entry["value_classification"]
 
-        # Sentiment puan katkısı hesaplama
-        # Aşırı Korku → LONG'a +puan, Aşırı Açgözlülük → SHORT'a +puan
         if value <= 20:
             sentiment_score = 3.0
             description = f"🟢 Aşırı Korku ({value}/100) → Tepki alımı beklentisi yüksek"
@@ -56,16 +62,13 @@ def get_fear_greed_index() -> dict | None:
             sentiment_score = 2.5
             description = f"🔴 Aşırı Açgözlülük ({value}/100) → Düzeltme riski var"
 
-        result = {
+        return {
             "value": value,
             "label": label,
             "sentiment_score": sentiment_score,
             "description": description,
             "bias": "LONG" if value <= 35 else ("SHORT" if value >= 65 else "NEUTRAL"),
         }
-
-        logger.info(f"[Sentiment] Fear & Greed: {value} ({label})")
-        return result
 
     except Exception as e:
         logger.error(f"[Sentiment] Fear & Greed API hatası: {e}")
@@ -74,153 +77,67 @@ def get_fear_greed_index() -> dict | None:
 
 def get_crypto_news_sentiment() -> dict:
     """
-    CryptoPanic RSS beslemesinden haber başlıklarını çekip
-    basit anahtar kelime analizi ile duyarlılık belirler.
-
-    Returns:
-        {
-            "positive_count": int,
-            "negative_count": int,
-            "neutral_count": int,
-            "overall": "Pozitif" | "Negatif" | "Nötr",
-            "headlines": [str],  # son 10 haber başlığı
-            "news_score": float (0-1 arası ek puan),
-        }
+    CryptoPanic RSS beslemesinden haber başlıklarını çeker.
     """
-    # Pozitif ve negatif anahtar kelimeler
-    positive_keywords = [
-        "bull", "surge", "rally", "pump", "breakout", "soar", "gain",
-        "recovery", "adoption", "approval", "etf approved", "all-time high",
-        "ath", "moon", "buy", "upgrade", "positive", "growth", "rising",
-        "support", "accumulation", "institutional", "yükseliş", "rekor",
-    ]
-
-    negative_keywords = [
-        "bear", "crash", "dump", "plunge", "hack", "ban", "regulation",
-        "sell-off", "selloff", "fear", "risk", "decline", "drop", "fall",
-        "scam", "fraud", "bankruptcy", "liquidation", "warning", "concern",
-        "crisis", "bubble", "correction", "düşüş", "yasak", "çöküş",
-    ]
+    positive_keywords = ["bull", "surge", "rally", "pump", "breakout", "soar", "gain", "recovery", "adoption"]
+    negative_keywords = ["bear", "crash", "dump", "plunge", "hack", "ban", "regulation", "sell-off", "scam"]
 
     try:
-        response = requests.get(config.CRYPTOPANIC_RSS, timeout=10)
+        opts = get_requests_options()
+        response = requests.get(config.CRYPTOPANIC_RSS, **opts)
         response.raise_for_status()
 
-        # XML parse - bozuk HTML durumunda regex fallback
+        # XML parse
         try:
             root = ET.fromstring(response.content)
-            items = root.findall(".//item")
-            titles_raw = []
-            for item in items[:15]:
-                title_elem = item.find("title")
-                if title_elem is not None and title_elem.text:
-                    titles_raw.append(title_elem.text)
+            titles_raw = [item.find("title").text for item in root.findall(".//item")[:15] if item.find("title") is not None]
         except ET.ParseError:
-            # Bozuk XML - regex ile title'ları çek
-            text = response.text
-            titles_raw = re.findall(r"<title>(?:<![CDATA[)?(.*?)(?:]]>)?</title>", text)
+            titles_raw = re.findall(r"<title>(?:<![CDATA[)?(.*?)(?:]]>)?</title>", response.text)
             titles_raw = [t.strip() for t in titles_raw[:15] if t.strip()]
 
         positive_count = 0
         negative_count = 0
-        neutral_count = 0
         headlines = []
 
         for raw_title in titles_raw:
             title = raw_title.lower()
             headlines.append(raw_title)
+            if any(kw in title for kw in positive_keywords): positive_count += 1
+            if any(kw in title for kw in negative_keywords): negative_count += 1
 
-            is_positive = any(kw in title for kw in positive_keywords)
-            is_negative = any(kw in title for kw in negative_keywords)
-
-            if is_positive and not is_negative:
-                positive_count += 1
-            elif is_negative and not is_positive:
-                negative_count += 1
-            else:
-                neutral_count += 1
-
-        # Genel duyarlılık
         if positive_count > negative_count:
-            overall = "Pozitif"
-            news_score = 0.5
+            overall, news_score = "Pozitif", 0.5
         elif negative_count > positive_count:
-            overall = "Negatif"
-            news_score = 0.5  # Negatif haberler de sinyal gücüne katkı sağlar
+            overall, news_score = "Negatif", 0.5
         else:
-            overall = "Nötr"
-            news_score = 0.0
+            overall, news_score = "Nötr", 0.0
 
-        result = {
+        logger.info(f"[Sentiment] Haberler: +{positive_count} / -{negative_count} → {overall}")
+        return {
             "positive_count": positive_count,
             "negative_count": negative_count,
-            "neutral_count": neutral_count,
             "overall": overall,
             "headlines": headlines[:10],
             "news_score": news_score,
         }
 
-        logger.info(
-            f"[Sentiment] Haberler: +{positive_count} / -{negative_count} → {overall}"
-        )
-        return result
-
     except Exception as e:
         logger.warning(f"[Sentiment] Haber çekme hatası (devam ediliyor): {e}")
-        return {
-            "positive_count": 0,
-            "negative_count": 0,
-            "neutral_count": 0,
-            "overall": "Nötr",
-            "headlines": [],
-            "news_score": 0.0,
-        }
+        return {"positive_count": 0, "negative_count": 0, "overall": "Nötr", "headlines": [], "news_score": 0.0}
 
 
 def get_combined_sentiment() -> dict:
-    """
-    Fear & Greed + Haber duyarlılığını birleştirir.
-
-    Returns:
-        {
-            "fear_greed": dict | None,
-            "news": dict,
-            "total_sentiment_score": float (0-3 arası),
-            "sentiment_bias": "LONG" | "SHORT" | "NEUTRAL",
-            "summary": str,
-        }
-    """
+    """Fear & Greed + Haber duyarlılığını birleştirir."""
     fg = get_fear_greed_index()
     news = get_crypto_news_sentiment()
-
-    # Toplam duyarlılık puanı
-    total_score = 0.0
-    bias = "NEUTRAL"
-    summary_parts = []
-
-    if fg:
-        total_score += fg["sentiment_score"]
-        summary_parts.append(fg["description"])
-        bias = fg["bias"]
-
-    total_score += news["news_score"]
-    if news["overall"] != "Nötr":
-        summary_parts.append(f"📰 Haberler: {news['overall']}")
-
-    # Haber duyarlılığı Fear & Greed ile uyumluysa bias'ı güçlendir
-    if fg and fg["bias"] == "LONG" and news["overall"] == "Negatif":
-        # Korku + negatif haberler → güçlü LONG sinyali (kontrarian)
-        total_score += 0.5
-        summary_parts.append("⚡ Kontrarian sinyal: Korku + negatif haberler")
-    elif fg and fg["bias"] == "SHORT" and news["overall"] == "Pozitif":
-        # Açgözlülük + pozitif haberler → güçlü SHORT sinyali (kontrarian)
-        total_score += 0.5
-        summary_parts.append("⚡ Kontrarian sinyal: Açgözlülük + pozitif haberler")
-
+    total_score = (fg["sentiment_score"] if fg else 0) + news["news_score"]
+    bias = fg["bias"] if fg else "NEUTRAL"
+    summary = (fg["description"] if fg else "") + (" | Haberler: " + news["overall"] if news["overall"] != "Nötr" else "")
+    
     return {
         "fear_greed": fg,
         "news": news,
         "total_sentiment_score": round(min(total_score, 3.0), 1),
         "sentiment_bias": bias,
-        "summary": " | ".join(summary_parts) if summary_parts else "Duyarlılık verisi yok",
+        "summary": summary or "Duyarlılık verisi yok",
     }

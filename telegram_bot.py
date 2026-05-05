@@ -4,8 +4,9 @@ Telegram Bot modülü
 - python-telegram-bot kütüphanesi kullanır (async)
 """
 
-import asyncio
+import os
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.request import HTTPXRequest
 from telegram.constants import ParseMode
 from loguru import logger
 
@@ -24,7 +25,12 @@ async def _send_message_async(text: str, reply_markup: InlineKeyboardMarkup = No
         return False
 
     try:
-        bot = Bot(token=config.TELEGRAM_BOT_TOKEN)
+        # PythonAnywhere Proxy Ayarı
+        trequest = None
+        if "PYTHONANYWHERE_DOMAIN" in os.environ:
+            trequest = HTTPXRequest(proxy_url="http://proxy.server:3128")
+            
+        bot = Bot(token=config.TELEGRAM_BOT_TOKEN, request=trequest)
         await bot.send_message(
             chat_id=config.TELEGRAM_CHAT_ID,
             text=text,

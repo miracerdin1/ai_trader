@@ -219,8 +219,22 @@ async def main():
     +======================================================+
     """)
 
-    app = ApplicationBuilder().token(config.TELEGRAM_BOT_TOKEN).build()
+    if not config.TELEGRAM_BOT_TOKEN or not config.TELEGRAM_CHAT_ID:
+        logger.error("❌ Telegram bilgileri eksik! .env dosyasını kontrol edin.")
+        return
 
+    # PythonAnywhere Proxy Ayarı
+    import os
+    from telegram.request import HTTPXRequest
+    trequest = None
+    if "PYTHONANYWHERE_DOMAIN" in os.environ:
+        logger.info("🌐 PythonAnywhere algılandı, proxy aktifleştiriliyor...")
+        trequest = HTTPXRequest(proxy_url="http://proxy.server:3128")
+
+    # Uygulamayı oluştur
+    app = ApplicationBuilder().token(config.TELEGRAM_BOT_TOKEN).request(trequest).build()
+
+    # Handlers
     app.add_handler(CallbackQueryHandler(callback_handler))
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), message_handler))
 

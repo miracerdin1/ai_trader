@@ -28,7 +28,7 @@ async def _send_message_async(text: str, reply_markup: InlineKeyboardMarkup = No
         # PythonAnywhere Proxy Ayarı
         trequest = None
         if "PYTHONANYWHERE_DOMAIN" in os.environ:
-            trequest = HTTPXRequest(proxy_url="http://proxy.server:3128")
+            trequest = HTTPXRequest(proxy="http://proxy.server:3128")
             
         bot = Bot(token=config.TELEGRAM_BOT_TOKEN, request=trequest)
         await bot.send_message(
